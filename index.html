@@ -37,8 +37,8 @@ h2{font:500 2.4rem/1.1 var(--serif);margin-bottom:1.5rem}
 .btn.alt{background:transparent;color:var(--ink);border:1px solid var(--ink)}
 .row{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:1rem}
 #status{margin-top:1rem;min-height:1.6em}
-#grid{columns:2 9rem;gap:.6rem;margin-top:1.5rem}
-#grid img{width:100%;border-radius:4px;margin-bottom:.6rem;display:block}
+#grid,#gallery{columns:2 9rem;gap:.6rem;margin-top:1.5rem}
+#grid img,#gallery img,#gallery video{width:100%;border-radius:4px;margin-bottom:.6rem;display:block}
 footer{text-align:center;padding:3rem 1rem;color:#5b6876;font-size:.9rem}
 body.locked{overflow:hidden}
 #gate{position:fixed;inset:0;z-index:20;background:var(--ink);color:var(--paper);display:grid;place-items:center;padding:1.5rem;text-align:center}
@@ -85,6 +85,10 @@ body.locked{overflow:hidden}
     <p id="status" role="status" aria-live="polite"></p>
   </div>
   <div id="grid"></div>
+  <h2 style="margin-top:3rem">Gallery</h2>
+  <p id="galleryNote">Photos and videos the couple has approved will appear here.</p>
+  <div class="row"><button class="btn alt" id="refresh" type="button">Refresh gallery</button></div>
+  <div id="gallery"></div>
 </section>
 
 <section id="gifts">
@@ -145,7 +149,31 @@ let sb = null, weddingId = null;
 function unlock() {
   $("gate").hidden = true;
   document.body.classList.remove("locked");
+  loadGallery();
 }
+
+/* ---- Gallery: shows only what the couple has approved ---- */
+async function loadGallery() {
+  if (!sb || !weddingId) return;
+  const { data: rows, error } = await sb.from("media").select("path,kind")
+    .eq("wedding_id", weddingId).eq("approved", true).order("created_at", { ascending: false });
+  if (error) { console.error("Gallery load failed:", error); $("galleryNote").textContent = "Couldn't load the gallery. Check your connection and tap Refresh."; return; }
+  $("gallery").replaceChildren();
+  if (!rows.length) { $("galleryNote").textContent = "Nothing approved yet. Check back soon."; return; }
+  $("galleryNote").textContent = rows.length + (rows.length === 1 ? " item" : " items");
+  const { data: urls, error: urlErr } = await sb.storage.from(CONFIG.bucket).createSignedUrls(rows.map(r => r.path), 3600);
+  if (urlErr) { console.error("Signed URLs failed:", urlErr); return; }
+  const byPath = Object.fromEntries(urls.map(u => [u.path, u.signedUrl]));
+  for (const r of rows) {
+    const src = byPath[r.path]; if (!src) continue;
+    let el;
+    if (r.kind === "video") { el = document.createElement("video"); el.controls = true; el.playsInline = true; el.preload = "metadata"; }
+    else { el = document.createElement("img"); el.alt = "Photo shared by a guest"; el.loading = "lazy"; }
+    el.src = src;
+    $("gallery").append(el);
+  }
+}
+$("refresh").addEventListener("click", loadGallery);
 
 async function initGate() {
   if (!ready) return; // demo mode: no Supabase yet, so no gate
