@@ -25,9 +25,21 @@ button[aria-pressed=true]{background:var(--brass);border-color:var(--brass)}
 .card img,.card video{width:100%;aspect-ratio:1;object-fit:cover;background:#e8ebef}
 .acts{display:flex;gap:.5rem;padding:.6rem}
 #msg{margin:1rem 0;min-height:1.5em}
+#themes{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:1rem}
+.tcard{background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;flex-direction:column}
+.tprev{padding:1.4rem 1rem;text-align:center}
+.tname{font-size:2rem;line-height:1.1}
+.sw{display:flex;gap:.4rem;justify-content:center;margin-top:.8rem}
+.sw i{width:1.1rem;height:1.1rem;border-radius:50%;border:1px solid rgba(255,255,255,.4);display:block}
+.tbody{padding:.8rem;display:flex;flex-direction:column;gap:.4rem;flex:1}
+.tbody span{font-size:.9rem;color:#4a5560}
+.tbody button{margin-top:auto}
+button:disabled{opacity:.6;cursor:default}
 [hidden]{display:none!important}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>window.NO_AUTO_THEME = true;</script>
+<script src="themes.js"></script>
 </head>
 <body>
 <main>
@@ -41,10 +53,12 @@ button[aria-pressed=true]{background:var(--brass);border-color:var(--brass)}
     <div class="bar">
       <button id="tPending" aria-pressed="true">Waiting for review</button>
       <button id="tApproved" class="alt" aria-pressed="false">Approved</button>
+      <button id="tTheme" class="alt" aria-pressed="false">Theme</button>
       <span class="sp"></span>
       <button id="out" class="alt">Sign out</button>
     </div>
     <div id="grid"></div>
+    <div id="themes" hidden></div>
   </div>
   <p id="msg" role="status"></p>
 </main>
@@ -70,6 +84,8 @@ async function load() {
     $("app").hidden = true; return;
   }
   wid = data.wedding_id; $("app").hidden = false; $("msg").textContent = "";
+  const { data: st } = await sb.from("wedding_settings").select("theme").eq("wedding_id", wid).maybeSingle();
+  if (st && st.theme) currentTheme = st.theme;
   render();
 }
 
@@ -109,14 +125,54 @@ $("grid").addEventListener("click", async e => {
   render();
 });
 
-function tab(approved) {
-  showApproved = approved;
-  $("tPending").setAttribute("aria-pressed", !approved); $("tPending").className = approved ? "alt" : "";
-  $("tApproved").setAttribute("aria-pressed", approved); $("tApproved").className = approved ? "" : "alt";
-  render();
+let currentTheme = "evening";
+
+function setView(v) {
+  showApproved = v === "approved";
+  for (const [id, name] of [["tPending", "pending"], ["tApproved", "approved"], ["tTheme", "theme"]]) {
+    $(id).setAttribute("aria-pressed", v === name);
+    $(id).className = v === name ? "" : "alt";
+  }
+  $("grid").hidden = v === "theme"; $("themes").hidden = v !== "theme";
+  if (v === "theme") renderThemes(); else render();
 }
-$("tPending").onclick = () => tab(false);
-$("tApproved").onclick = () => tab(true);
+$("tPending").onclick = () => setView("pending");
+$("tApproved").onclick = () => setView("approved");
+$("tTheme").onclick = () => setView("theme");
+
+/* Theme previews use each theme's own fonts, so load them all here */
+(function () {
+  const fam = [...new Set(Object.values(THEMES).flatMap(t => t.fonts.split("&")))];
+  const l = document.createElement("link");
+  l.rel = "stylesheet"; l.href = "https://fonts.googleapis.com/css2?" + fam.join("&") + "&display=swap";
+  document.head.append(l);
+})();
+
+function renderThemes() {
+  $("msg").textContent = "";
+  $("themes").innerHTML = Object.entries(THEMES).map(([id, t]) => {
+    const v = t.vars, cur = id === currentTheme;
+    return `<div class="tcard">
+      <div class="tprev" style='background:${v["--ink"]};color:${v["--paper"]};font-family:${t.serif}'>
+        <div class="tname">Alex &amp; Jordan</div>
+        <div style='font-family:${t.sans};font-size:.85rem;opacity:.85'>Saturday, April 24, 2027</div>
+        <div class="sw"><i style="background:${v["--brass-lt"]}"></i><i style="background:${v["--paper"]}"></i><i style="background:${v["--brass"]}"></i></div>
+      </div>
+      <div class="tbody"><b>${t.name}</b><span>${t.note}</span>
+        <button data-theme="${id}" ${cur ? "disabled" : ""}>${cur ? "Current theme" : "Use this theme"}</button></div>
+    </div>`;
+  }).join("");
+}
+
+$("themes").addEventListener("click", async e => {
+  const b = e.target.closest("button[data-theme]"); if (!b || b.disabled) return;
+  b.disabled = true; $("msg").textContent = "Saving...";
+  const id = b.dataset.theme;
+  const { error } = await sb.from("wedding_settings").upsert({ wedding_id: wid, theme: id });
+  if (error) { console.error(error); $("msg").textContent = "Couldn't save the theme: " + error.message; b.disabled = false; return; }
+  currentTheme = id; renderThemes();
+  $("msg").textContent = "Theme saved. Guests see it the next time they open or refresh the site.";
+});
 
 $("login").addEventListener("submit", async e => {
   e.preventDefault(); $("msg").textContent = "Signing in...";

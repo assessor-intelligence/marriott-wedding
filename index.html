@@ -17,13 +17,13 @@ body{font:17px/1.6 var(--sans);color:var(--ink);background:var(--paper)}
 a,button,input{font:inherit}
 :focus-visible{outline:3px solid var(--brass);outline-offset:3px}
 nav{position:fixed;inset:0 0 auto 0;z-index:5;display:flex;gap:1.4rem;justify-content:center;padding:1rem;
-padding-top:calc(1rem + env(safe-area-inset-top,0px));background:rgba(28,42,56,.55);backdrop-filter:blur(10px)}
+padding-top:calc(1rem + env(safe-area-inset-top,0px));background:rgba(28,42,56,.55);background:color-mix(in srgb,var(--ink) 60%,transparent);backdrop-filter:blur(10px)}
 nav a{color:#fff;text-decoration:none;font-size:.95rem}
 .hero{min-height:100svh;background:var(--ink);color:var(--paper);display:grid;place-items:center;text-align:center;padding:6rem 1.5rem}
 .hero h1{font:300 clamp(3.4rem,15vw,10rem)/.95 var(--serif);letter-spacing:-.02em}
 .hero h1 span{display:block;overflow:hidden}
 .hero h1 span i{display:block;font-style:normal;transform:translateY(105%);animation:rise 1.4s cubic-bezier(.2,.8,.2,1) forwards}
-.hero h1 span:nth-child(2) i{animation-delay:.25s;font-style:italic;color:var(--brass)}
+.hero h1 span:nth-child(2) i{animation-delay:.25s;font-style:var(--n2style,italic);color:var(--brass-lt,var(--brass))}
 @keyframes rise{to{transform:none}}
 .hero p{margin-top:2rem;font-size:1.1rem;opacity:.85}
 section{max-width:46rem;margin:0 auto;padding:5rem 1.5rem}
@@ -48,6 +48,7 @@ body.locked{overflow:hidden}
 #gateMsg{min-height:1.6em;margin-top:1rem;color:#f0c9a8}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="themes.js"></script>
 </head>
 <body>
 <div id="gate" hidden>
@@ -151,6 +152,15 @@ function unlock() {
   $("gate").hidden = true;
   document.body.classList.remove("locked");
   loadGallery();
+  loadTheme();
+}
+
+/* ---- Theme: chosen by the couple on the admin page ---- */
+async function loadTheme() {
+  if (!sb || !weddingId) return;
+  const { data, error } = await sb.from("wedding_settings").select("theme").eq("wedding_id", weddingId).maybeSingle();
+  if (error) { console.error("Theme load failed:", error); return; }
+  if (data && data.theme) applyTheme(data.theme);
 }
 
 /* ---- Gallery: shows only what the couple has approved ---- */
