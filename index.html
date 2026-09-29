@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wedding Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300&family=Karla:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1c2a38;--paper:#f5f6f8;--brass:#a67c52;--mist:#dfe4ea;--line:#c9d0d8;
+--serif:"Cormorant Garamond",Georgia,serif;--sans:Karla,system-ui,sans-serif}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{font:17px/1.6 var(--sans);color:var(--ink);background:var(--paper)}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+a,button,input{font:inherit}
+:focus-visible{outline:3px solid var(--brass);outline-offset:3px}
+nav{position:fixed;inset:0 0 auto 0;z-index:5;display:flex;gap:1.4rem;justify-content:center;padding:1rem;
+padding-top:calc(1rem + env(safe-area-inset-top,0px));background:rgba(28,42,56,.55);backdrop-filter:blur(10px)}
+nav a{color:#fff;text-decoration:none;font-size:.95rem}
+.hero{min-height:100svh;background:var(--ink);color:var(--paper);display:grid;place-items:center;text-align:center;padding:6rem 1.5rem}
+.hero h1{font:300 clamp(3.4rem,15vw,10rem)/.95 var(--serif);letter-spacing:-.02em}
+.hero h1 span{display:block;overflow:hidden}
+.hero h1 span i{display:block;font-style:normal;transform:translateY(105%);animation:rise 1.4s cubic-bezier(.2,.8,.2,1) forwards}
+.hero h1 span:nth-child(2) i{animation-delay:.25s;font-style:italic;color:var(--brass)}
+@keyframes rise{to{transform:none}}
+.hero p{margin-top:2rem;font-size:1.1rem;opacity:.85}
+section{max-width:46rem;margin:0 auto;padding:5rem 1.5rem}
+h2{font:500 2.4rem/1.1 var(--serif);margin-bottom:1.5rem}
+.day{border-top:1px solid var(--line)}
+.day div{display:grid;grid-template-columns:6.5rem 1fr;gap:1rem;padding:1rem 0;border-bottom:1px solid var(--line)}
+.day b{font-weight:600;color:var(--brass)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:6px;padding:1.5rem}
+.btn{display:inline-block;background:var(--ink);color:#fff;border:0;border-radius:4px;padding:.8rem 1.4rem;cursor:pointer;text-decoration:none;font-weight:600}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:.8rem;margin-top:1rem}
+#status{margin-top:1rem;min-height:1.6em}
+#grid{columns:2 9rem;gap:.6rem;margin-top:1.5rem}
+#grid img{width:100%;border-radius:4px;margin-bottom:.6rem;display:block}
+footer{text-align:center;padding:3rem 1rem;color:#5b6876;font-size:.9rem}
+body.locked{overflow:hidden}
+#gate{position:fixed;inset:0;z-index:20;background:var(--ink);color:var(--paper);display:grid;place-items:center;padding:1.5rem;text-align:center}
+#gate[hidden]{display:none}
+#gate h2{color:var(--paper)}
+#gate input{width:100%;max-width:22rem;padding:.8rem 1rem;border-radius:4px;border:1px solid var(--line);margin:1rem 0;color:var(--ink);background:#fff}
+#gateMsg{min-height:1.6em;margin-top:1rem;color:#f0c9a8}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div id="gate" hidden>
+  <form id="gateForm">
+    <h2>Enter your passphrase</h2>
+    <p>You'll find it on your invitation. You only need to enter it once on this device.</p>
+    <label for="pass" hidden>Passphrase</label>
+    <input id="pass" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+    <div><button class="btn alt" style="background:var(--paper)" type="submit">Enter</button></div>
+    <p id="gateMsg" role="alert"></p>
+  </form>
+</div>
+<nav><a href="#day">Schedule</a><a href="#photos">Photos</a><a href="#gifts">Gifts</a></nav>
+
+<header class="hero">
+  <div>
+    <h1 id="names" aria-label=""><span><i id="n1"></i></span><span><i id="n2"></i></span></h1>
+    <p id="when"></p>
+  </div>
+</header>
+
+<section id="day">
+  <h2>The day</h2>
+  <div class="day" id="schedule"></div>
+</section>
+
+<section id="photos">
+  <h2>Share your photos and videos</h2>
+  <div class="panel">
+    <p>Pick as many as you like. No app or account needed.</p>
+    <div class="row">
+      <label class="btn" for="file">Choose photos or videos</label>
+      <input id="file" type="file" accept="image/*,video/*" multiple hidden>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </div>
+  <div id="grid"></div>
+</section>
+
+<section id="gifts">
+  <h2>Honeymoon fund</h2>
+  <p>Your presence is the gift. If you'd like to contribute as well, choose an amount below.</p>
+  <div class="row" id="giftBtns"></div>
+</section>
+
+<footer>Made with love. See you there.</footer>
+
+<script>
+/* ===== EDIT THIS BLOCK: all the wedding details live here ===== */
+const CONFIG = {
+  partner1: "Isis",
+  partner2: "Connor",
+  dateText: "Saturday, April 24, 2027 · Reno, Nevada",
+  schedule: [
+    ["3:30 PM", "Guests arrive and find their seats"],
+    ["4:00 PM", "Ceremony"],
+    ["5:00 PM", "Cocktail hour and photos"],
+    ["6:30 PM", "Dinner and toasts"],
+    ["8:00 PM", "Trivia: how well do you know the couple?"],
+    ["9:00 PM", "Dancing"]
+  ],
+  /* Supabase: leave blank until you create a project (see next steps) */
+  supabaseUrl: "https://jufaoddkjyowobuhtobz.supabase.co",       // e.g. https://abcdxyz.supabase.co
+  supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1ZmFvZGRranlvd29idWh0b2J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2NDQ3NzksImV4cCI6MjEwNjIyMDc3OX0.mEzkjkrJU-qyCgQkOXnkhjtBp5QBarB0zxvofZmJ3Pc",   // the public "anon" key, safe to put in a public site
+  bucket: "guest-uploads",
+  /* Stripe Payment Links: paste one link per amount */
+  gifts: [
+    { label: "$25",  url: "" },
+    { label: "$50",  url: "" },
+    { label: "$100", url: "" }
+  ]
+};
+/* ============================================================== */
+
+const $ = id => document.getElementById(id);
+$("n1").textContent = CONFIG.partner1;
+$("n2").textContent = "& " + CONFIG.partner2;
+$("names").setAttribute("aria-label", CONFIG.partner1 + " and " + CONFIG.partner2);
+$("when").textContent = CONFIG.dateText;
+document.title = CONFIG.partner1 + " & " + CONFIG.partner2;
+
+$("schedule").innerHTML = CONFIG.schedule
+  .map(([t, e]) => `<div><b>${t}</b><span>${e}</span></div>`).join("");
+
+$("giftBtns").innerHTML = CONFIG.gifts.map(g => g.url
+  ? `<a class="btn" href="${g.url}" target="_blank" rel="noopener">${g.label}</a>`
+  : `<button class="btn alt" disabled>${g.label}</button>`).join("");
+
+/* ---- Uploads: browser compresses photos, then sends them straight to Supabase Storage ---- */
+const ready = CONFIG.supabaseUrl && CONFIG.supabaseAnonKey;
+
+/* ---- Passphrase gate: the database checks the passphrase, not this page ---- */
+let sb = null, weddingId = null;
+
+function unlock() {
+  $("gate").hidden = true;
+  document.body.classList.remove("locked");
+}
+
+async function initGate() {
+  if (!ready) return; // demo mode: no Supabase yet, so no gate
+  sb = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+  document.body.classList.add("locked");
+  $("gate").hidden = false;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) await sb.auth.signInAnonymously();
+  const saved = localStorage.getItem("wedding_id");
+  if (saved) {
+    const { data } = await sb.from("wedding_members").select("wedding_id").eq("wedding_id", saved).maybeSingle();
+    if (data) { weddingId = saved; unlock(); }
+  }
+}
+
+$("gateForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("gateMsg").textContent = "Checking...";
+  const { data, error } = await sb.rpc("join_wedding", { p_passphrase: $("pass").value });
+  if (error) {
+    $("gateMsg").textContent = /too many/i.test(error.message)
+      ? "Too many attempts. Wait 10 minutes and try again."
+      : "Something went wrong. Check your connection and try again.";
+    return;
+  }
+  if (!data) { $("gateMsg").textContent = "That passphrase didn't match. Check your invitation and try again."; return; }
+  weddingId = data;
+  localStorage.setItem("wedding_id", data);
+  unlock();
+});
+initGate();
+
+function compress(file) {
+  if (!file.type.startsWith("image/")) return Promise.resolve(file);
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 2400 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = img.width * s; c.height = img.height * s;
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => resolve(b || file), "image/jpeg", 0.85);
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function upload(file) {
+  const body = await compress(file);
+  const ext = body.type === "image/jpeg" ? "jpg" : (file.name.split(".").pop() || "bin");
+  const name = Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+  const { error } = await sb.storage.from(CONFIG.bucket)
+    .upload(`${weddingId}/${name}`, body, { contentType: body.type || "application/octet-stream" });
+  if (error) throw new Error("Upload failed: " + error.message);
+  return body;
+}
+
+$("file").addEventListener("change", async e => {
+  const files = [...e.target.files];
+  if (!files.length) return;
+  if (!ready) {
+    $("status").textContent = "Uploads are not switched on yet. Add your Supabase details in CONFIG to enable them.";
+    return;
+  }
+  let done = 0, failed = 0;
+  for (const f of files) {
+    $("status").textContent = `Uploading ${done + failed + 1} of ${files.length}...`;
+    try {
+      const b = await upload(f); done++;
+      if (b.type.startsWith("image/")) {
+        const im = new Image(); im.src = URL.createObjectURL(b); im.alt = "Photo you shared";
+        $("grid").prepend(im);
+      }
+    } catch (err) { failed++; }
+  }
+  $("status").textContent = failed
+    ? `${done} uploaded, ${failed} failed. Check your connection and choose the failed files again.`
+    : `Uploaded ${done}. Thank you!`;
+  e.target.value = "";
+});
+</script>
+</body>
+</html>
