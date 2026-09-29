@@ -98,8 +98,8 @@ body.locked{overflow:hidden}
 <script>
 /* ===== EDIT THIS BLOCK: all the wedding details live here ===== */
 const CONFIG = {
-  partner1: "Isis",
-  partner2: "Connor",
+  partner1: "Connor",
+  partner2: "Isis",
   dateText: "Saturday, April 24, 2027 · Reno, Nevada",
   schedule: [
     ["3:30 PM", "Guests arrive and find their seats"],
@@ -224,11 +224,22 @@ $("file").addEventListener("change", async e => {
     $("status").textContent = `Uploading ${done + failed + 1} of ${files.length}...`;
     try {
       const b = await upload(f); done++;
+      const note = t => {
+        const p = document.createElement("p");
+        p.className = "panel"; p.textContent = t;
+        p.style.cssText = "break-inside:avoid;margin-bottom:.6rem";
+        $("grid").prepend(p);
+      };
       if (b.type.startsWith("image/")) {
-        const im = new Image(); im.src = URL.createObjectURL(b); im.alt = "Photo you shared";
+        const im = new Image(); im.alt = "Photo you shared";
+        im.onerror = () => { console.error("Preview failed:", b.type, b.size); im.remove(); note("Photo uploaded. This browser can't preview it, but it was saved."); };
+        const fr = new FileReader();
+        fr.onload = () => { im.src = fr.result; };
+        fr.onerror = () => im.onerror();
+        fr.readAsDataURL(b);
         $("grid").prepend(im);
-      }
-    } catch (err) { failed++; }
+      } else note("Video uploaded.");
+    } catch (err) { console.error(err); failed++; }
   }
   $("status").textContent = failed
     ? `${done} uploaded, ${failed} failed. Check your connection and choose the failed files again.`
