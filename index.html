@@ -117,6 +117,7 @@ const CONFIG = {
   supabaseUrl: "https://jufaoddkjyowobuhtobz.supabase.co",       // e.g. https://abcdxyz.supabase.co
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1ZmFvZGRranlvd29idWh0b2J6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA2NDQ3NzksImV4cCI6MjEwNjIyMDc3OX0.mEzkjkrJU-qyCgQkOXnkhjtBp5QBarB0zxvofZmJ3Pc",   // the public "anon" key, safe to put in a public site
   bucket: "guest-uploads",
+  maxUploadMB: 50,       // Supabase free plan allows up to 50. Raise it if you upgrade and raise the storage limit.
   /* Stripe Payment Links: paste one link per amount */
   gifts: [
     { label: "$25",  url: "" },
@@ -229,6 +230,7 @@ $("gateForm").addEventListener("submit", async e => {
 });
 initGate();
 
+const MAX_MB = CONFIG.maxUploadMB || 50;   // falls back to 50 if the CONFIG line is missing
 const HEIC_SRC = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
 
 function loadScript(src) {
@@ -273,15 +275,19 @@ async function compress(file) {
 
 async function upload(file) {
   const body = await compress(file);
-  if (body.size > CONFIG.maxUploadMB * 1024 * 1024) {
-    const e = new Error("File is over " + CONFIG.maxUploadMB + " MB"); e.tooBig = true; throw e;
+  if (body.size > MAX_MB * 1024 * 1024) {
+    const e = new Error("File is over " + MAX_MB + " MB"); e.tooBig = true; throw e;
   }
   const ext = body.type === "image/jpeg" ? "jpg" : (file.name.split(".").pop() || "bin");
   const name = Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
   const path = `${weddingId}/${name}`;
   const { error } = await sb.storage.from(CONFIG.bucket)
     .upload(path, body, { contentType: body.type || "application/octet-stream" });
-  if (error) throw new Error("Upload failed: " + error.message);
+  if (error) {
+    const e = new Error("Upload failed: " + error.message);
+    if (String(error.statusCode) === "413" || /exceed|too large|payload/i.test(error.message)) e.tooBig = true;
+    throw e;
+  }
   const kind = (body.type || "").startsWith("video/") ? "video" : "image";
   const { error: rowErr } = await sb.from("media").insert({ wedding_id: weddingId, path, kind });
   if (rowErr) throw new Error("Could not record upload: " + rowErr.message);
@@ -319,7 +325,7 @@ $("file").addEventListener("change", async e => {
   }
   $("status").textContent = failed
     ? `${done} uploaded, ${failed} failed. ` + (tooBig
-        ? `${tooBig} ${tooBig === 1 ? "was" : "were"} over ${CONFIG.maxUploadMB} MB. Try a shorter video clip. `
+        ? `${tooBig} ${tooBig === 1 ? "was" : "were"} too large (limit ${MAX_MB} MB). Try a shorter video clip. `
         : "") + (failed > tooBig ? "Check your connection and choose the failed files again." : "")
     : `Uploaded ${done}. Thank you!`;
   e.target.value = "";
