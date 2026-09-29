@@ -153,7 +153,10 @@ async function initGate() {
   document.body.classList.add("locked");
   $("gate").hidden = false;
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) await sb.auth.signInAnonymously();
+  if (!session) {
+    const { error } = await sb.auth.signInAnonymously();
+    if (error) { console.error("Anonymous sign-in failed:", error); $("gateMsg").textContent = "Setup problem: guest sign-in is unavailable."; }
+  }
   const saved = localStorage.getItem("wedding_id");
   if (saved) {
     const { data } = await sb.from("wedding_members").select("wedding_id").eq("wedding_id", saved).maybeSingle();
@@ -166,6 +169,7 @@ $("gateForm").addEventListener("submit", async e => {
   $("gateMsg").textContent = "Checking...";
   const { data, error } = await sb.rpc("join_wedding", { p_passphrase: $("pass").value });
   if (error) {
+    console.error("join_wedding failed:", error);
     $("gateMsg").textContent = /too many/i.test(error.message)
       ? "Too many attempts. Wait 10 minutes and try again."
       : "Something went wrong. Check your connection and try again.";
@@ -198,9 +202,13 @@ async function upload(file) {
   const body = await compress(file);
   const ext = body.type === "image/jpeg" ? "jpg" : (file.name.split(".").pop() || "bin");
   const name = Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
+  const path = `${weddingId}/${name}`;
   const { error } = await sb.storage.from(CONFIG.bucket)
-    .upload(`${weddingId}/${name}`, body, { contentType: body.type || "application/octet-stream" });
+    .upload(path, body, { contentType: body.type || "application/octet-stream" });
   if (error) throw new Error("Upload failed: " + error.message);
+  const kind = (body.type || "").startsWith("video/") ? "video" : "image";
+  const { error: rowErr } = await sb.from("media").insert({ wedding_id: weddingId, path, kind });
+  if (rowErr) throw new Error("Could not record upload: " + rowErr.message);
   return body;
 }
 
